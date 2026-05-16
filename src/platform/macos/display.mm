@@ -6,6 +6,7 @@
 #include "src/config.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
+#include "src/platform/macos/avfoundation-bug.h"
 #include "src/platform/macos/av_img_t.h"
 #include "src/platform/macos/av_video.h"
 #include "src/platform/macos/misc.h"
@@ -26,6 +27,7 @@ namespace platf {
     CGDirectDisplayID display_id {};
 
     ~av_display_t() override {
+      avf_bug_set_active(false);
       [av_capture release];
     }
 
@@ -183,6 +185,8 @@ namespace platf {
       BOOST_LOG(error) << "Video setup failed."sv;
       return nullptr;
     }
+
+    avf_bug_set_active(true);
 
     display->width = display->av_capture.frameWidth;
     display->height = display->av_capture.frameHeight;

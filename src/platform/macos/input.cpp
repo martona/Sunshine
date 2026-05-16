@@ -19,6 +19,7 @@
 #include "src/input.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
+#include "src/platform/macos/avfoundation-bug.h"
 #include "src/utility.h"
 
 /**
@@ -367,6 +368,13 @@ const KeyCodeMap kKeyCodesMap[] = {
     const util::point_t previous_location,
     const int click_count
   ) {
+    if (type == kCGEventMouseMoved ||
+        type == kCGEventLeftMouseDragged ||
+        type == kCGEventRightMouseDragged ||
+        type == kCGEventOtherMouseDragged) {
+      avf_bug_note_mouse_activity();
+    }
+
     BOOST_LOG(debug) << "mouse_event: "sv << button << ", type: "sv << type << ", location:"sv << raw_location.x << ":"sv << raw_location.y << " click_count: "sv << click_count;
 
     const auto macos_input = static_cast<macos_input_t *>(input.get());
