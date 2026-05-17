@@ -326,6 +326,8 @@ const KeyCodeMap kKeyCodesMap[] = {
     }
 
     CGEventSetFlags(event, macos_input->kb_flags);
+    // Let the AVFoundation workaround know text-entry-shaped input happened.
+    avf_bug_note_keyboard_activity();
     CGEventPost(kCGSessionEventTap, event);
     CFRelease(event);
   }
@@ -372,6 +374,7 @@ const KeyCodeMap kKeyCodesMap[] = {
         type == kCGEventLeftMouseDragged ||
         type == kCGEventRightMouseDragged ||
         type == kCGEventOtherMouseDragged) {
+      // Let the AVFoundation workaround react only to real pointer motion.
       avf_bug_note_mouse_activity();
     }
 

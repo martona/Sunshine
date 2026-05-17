@@ -27,6 +27,7 @@ namespace platf {
     CGDirectDisplayID display_id {};
 
     ~av_display_t() override {
+      // Stop the cursor workaround when AVFoundation capture is torn down.
       avf_bug_set_active(false);
       [av_capture release];
     }
@@ -186,6 +187,7 @@ namespace platf {
       return nullptr;
     }
 
+    // Enable the cursor workaround while AVFoundation capture is active.
     avf_bug_set_active(true);
 
     display->width = display->av_capture.frameWidth;

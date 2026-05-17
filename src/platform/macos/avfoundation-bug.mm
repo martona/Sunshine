@@ -18,9 +18,10 @@
 using namespace std::literals;
 
 namespace {
-  constexpr int64_t CURSOR_VISIBILITY_RESET_DELAY_NS = NSEC_PER_SEC;
+  constexpr int64_t CURSOR_VISIBILITY_RESET_DELAY_NS = 50 * (NSEC_PER_SEC / 1000);
   constexpr CGFloat DOCK_POKE_MARGIN = 8.0;
 
+  // Returns the serial queue that owns cursor reset state and timing.
   dispatch_queue_t cursor_reset_queue() {
     static dispatch_once_t once;
     static dispatch_queue_t queue;
@@ -33,8 +34,10 @@ namespace {
   uint64_t cursor_reset_generation {};
   bool cursor_reset_scheduled {};
   bool cursor_reset_armed {};
+  bool last_input_was_keyboard {};
   bool is_active {};
 
+  // Looks up the Dock process so its Accessibility tree can be queried.
   bool dock_process_id(pid_t &pid) {
     NSArray<NSRunningApplication *> *dock_apps = [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"];
     if (dock_apps.count == 0) {
@@ -45,6 +48,7 @@ namespace {
     return true;
   }
 
+  // Reads an Accessibility element's screen-space frame.
   bool ax_element_frame(AXUIElementRef element, CGRect &frame) {
     CFTypeRef position_value = nullptr;
     CFTypeRef size_value = nullptr;
@@ -74,6 +78,7 @@ namespace {
     return !CGRectIsEmpty(frame);
   }
 
+  // Checks whether an Accessibility element has the expected role.
   bool ax_element_role_is(AXUIElementRef element, CFStringRef expected_role) {
     CFTypeRef role = nullptr;
     if (AXUIElementCopyAttributeValue(element, kAXRoleAttribute, &role) != kAXErrorSuccess || !role) {
@@ -86,6 +91,7 @@ namespace {
     return matches;
   }
 
+  // Reports whether an Accessibility element is explicitly hidden.
   bool ax_element_is_hidden(AXUIElementRef element) {
     CFTypeRef hidden = nullptr;
     if (AXUIElementCopyAttributeValue(element, kAXHiddenAttribute, &hidden) != kAXErrorSuccess || !hidden) {
@@ -97,6 +103,7 @@ namespace {
     return result;
   }
 
+  // Walks the Dock Accessibility tree until it finds the Dock list frame.
   bool search_dock_ax_frame(AXUIElementRef element, CGRect &frame, int depth) {
     if (depth > 8 || ax_element_is_hidden(element)) {
       return false;
@@ -132,8 +139,8 @@ namespace {
     return found;
   }
 
-  bool dock_frame_from_accessibility(CGRect &frame) {
-    pid_t dock_pid = 0;
+  // Fetches the visible Dock frame and process from the Dock app's Accessibility tree.
+  bool dock_frame_from_accessibility(CGRect &frame, pid_t &dock_pid) {
     if (!dock_process_id(dock_pid)) {
       return false;
     }
@@ -149,9 +156,33 @@ namespace {
     return found;
   }
 
+  // Checks that the chosen point is currently occupied by a Dock-owned AX element.
+  bool point_hits_dock(CGPoint point, pid_t dock_pid) {
+    AXUIElementRef system = AXUIElementCreateSystemWide();
+    if (!system) {
+      return false;
+    }
+
+    AXUIElementRef hit_element = nullptr;
+    AXError error = AXUIElementCopyElementAtPosition(system, point.x, point.y, &hit_element);
+    CFRelease(system);
+
+    if (error != kAXErrorSuccess || !hit_element) {
+      return false;
+    }
+
+    pid_t hit_pid = 0;
+    bool hits_dock = AXUIElementGetPid(hit_element, &hit_pid) == kAXErrorSuccess && hit_pid == dock_pid;
+    CFRelease(hit_element);
+
+    return hits_dock;
+  }
+
+  // Chooses a Dock edge point that should not trigger item tooltips.
   bool dock_edge_poke_point(CGPoint original, CGPoint &point) {
     CGRect bounds = CGRectZero;
-    if (!dock_frame_from_accessibility(bounds)) {
+    pid_t dock_pid = 0;
+    if (!dock_frame_from_accessibility(bounds, dock_pid)) {
       return false;
     }
 
@@ -163,9 +194,10 @@ namespace {
       point = CGPointMake(CGRectGetMidX(bounds), y);
     }
 
-    return true;
+    return point_hits_dock(point, dock_pid);
   }
 
+  // Posts and warps a mouse move to make WindowServer process the new point.
   void post_mouse_move(CGEventSourceRef source, CGPoint point) {
     CGEventRef event = CGEventCreateMouseEvent(source, kCGEventMouseMoved, point, kCGMouseButtonLeft);
     if (event) {
@@ -175,6 +207,7 @@ namespace {
     }
   }
 
+  // Nudges the cursor through the Dock when CoreGraphics says it is hidden.
   void reset_cursor_visibility() {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -201,6 +234,7 @@ namespace {
     }
   }
 
+  // Arms the reset after a full idle delay with no newer mouse activity.
   void schedule_cursor_visibility_reset_check(uint64_t generation) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, CURSOR_VISIBILITY_RESET_DELAY_NS), cursor_reset_queue(), ^{
       if (generation != cursor_reset_generation) {
@@ -216,6 +250,7 @@ namespace {
   }
 }  // namespace
 
+// Records mouse movement and runs the reset if the idle debounce armed it.
 void avf_bug_note_mouse_activity() {
   dispatch_async(cursor_reset_queue(), ^{
     if (!is_active) {
@@ -225,8 +260,11 @@ void avf_bug_note_mouse_activity() {
     ++cursor_reset_generation;
     if (cursor_reset_armed) {
       cursor_reset_armed = false;
-      reset_cursor_visibility();
+      if (last_input_was_keyboard) {
+        reset_cursor_visibility();
+      }
     }
+    last_input_was_keyboard = false;
 
     if (cursor_reset_scheduled) {
       return;
@@ -237,11 +275,22 @@ void avf_bug_note_mouse_activity() {
   });
 }
 
+// Records keyboard input as the only eligible precursor to a cursor reset.
+void avf_bug_note_keyboard_activity() {
+  dispatch_async(cursor_reset_queue(), ^{
+    if (is_active) {
+      last_input_was_keyboard = true;
+    }
+  });
+}
+
+// Enables or disables the workaround and clears pending debounce state.
 void avf_bug_set_active(bool active) {
   dispatch_sync(cursor_reset_queue(), ^{
     ++cursor_reset_generation;
     cursor_reset_scheduled = false;
     cursor_reset_armed = false;
+    last_input_was_keyboard = false;
 
     is_active = active;
   });
