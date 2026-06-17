@@ -21,6 +21,7 @@
 #undef AVMediaType
 
 #include <cstdlib>
+#include <sstream>
 #include <thread>
 
 namespace fs = std::filesystem;
@@ -29,6 +30,125 @@ namespace platf {
   using namespace std::literals;
 
   namespace {
+    const char *cg_error_name(CGError error) {
+      switch (error) {
+        case kCGErrorSuccess:
+          return "success";
+        case kCGErrorFailure:
+          return "failure";
+        case kCGErrorIllegalArgument:
+          return "illegal argument";
+        case kCGErrorInvalidConnection:
+          return "invalid connection";
+        case kCGErrorInvalidContext:
+          return "invalid context";
+        case kCGErrorCannotComplete:
+          return "cannot complete";
+        case kCGErrorNotImplemented:
+          return "not implemented";
+        case kCGErrorRangeCheck:
+          return "range check";
+        case kCGErrorTypeCheck:
+          return "type check";
+        case kCGErrorInvalidOperation:
+          return "invalid operation";
+        case kCGErrorNoneAvailable:
+          return "none available";
+        default:
+          return "unknown";
+      }
+    }
+
+    std::string format_rect(CGRect rect) {
+      std::ostringstream formatted;
+      formatted << '(' << rect.origin.x << ',' << rect.origin.y << ") "
+                << rect.size.width << 'x' << rect.size.height;
+      return formatted.str();
+    }
+
+    std::string display_mode_summary(CGDisplayModeRef mode) {
+      if (!mode) {
+        return "<none>";
+      }
+
+      std::ostringstream formatted;
+      formatted << CGDisplayModeGetWidth(mode) << 'x' << CGDisplayModeGetHeight(mode)
+                << " points, " << CGDisplayModeGetPixelWidth(mode) << 'x'
+                << CGDisplayModeGetPixelHeight(mode) << " pixels";
+
+      const auto refresh_rate = CGDisplayModeGetRefreshRate(mode);
+      if (refresh_rate > 0) {
+        formatted << ", " << refresh_rate << " Hz";
+      }
+
+      return formatted.str();
+    }
+
+    void log_display_diagnostic(CGDirectDisplayID display_id, const char *source) {
+      NSString *display_name = [AVVideo getDisplayName:display_id];
+      const char *display_name_utf8 = display_name ? display_name.UTF8String : "<unknown>";
+      CGDisplayModeRef mode = CGDisplayCopyDisplayMode(display_id);
+
+      BOOST_LOG(info) << "Display diagnostic ["sv << source << "]: id: "sv << display_id
+                      << ", name: "sv << display_name_utf8
+                      << ", main: "sv << (display_id == CGMainDisplayID())
+                      << ", active: "sv << CGDisplayIsActive(display_id)
+                      << ", online: "sv << CGDisplayIsOnline(display_id)
+                      << ", asleep: "sv << CGDisplayIsAsleep(display_id)
+                      << ", built-in: "sv << CGDisplayIsBuiltin(display_id)
+                      << ", bounds: "sv << format_rect(CGDisplayBounds(display_id))
+                      << ", framebuffer pixels: "sv << CGDisplayPixelsWide(display_id) << 'x' << CGDisplayPixelsHigh(display_id)
+                      << ", mode: "sv << display_mode_summary(mode);
+
+      if (mode) {
+        CFRelease(mode);
+      }
+    }
+
+    void log_nsscreen_diagnostics() {
+      NSArray<NSScreen *> *screens = [NSScreen screens];
+
+      BOOST_LOG(info) << "NSScreen diagnostics: count: "sv << [screens count];
+
+      for (NSScreen *screen in screens) {
+        NSNumber *display_id = screen.deviceDescription[@"NSScreenNumber"];
+        NSString *screen_name = screen.localizedName;
+
+        BOOST_LOG(info) << "NSScreen diagnostic: id: "sv << (display_id ? [display_id unsignedIntValue] : 0)
+                        << ", name: "sv << (screen_name ? screen_name.UTF8String : "<unknown>")
+                        << ", frame: "sv << format_rect(screen.frame)
+                        << ", backing scale: "sv << screen.backingScaleFactor;
+      }
+    }
+
+    void log_display_list_diagnostics(const char *list_name, CGError error, const CGDirectDisplayID *displays, uint32_t count) {
+      BOOST_LOG(info) << list_name << ": status: "sv << cg_error_name(error)
+                      << " ("sv << error << "), count: "sv << count;
+
+      if (error != kCGErrorSuccess) {
+        return;
+      }
+
+      for (uint32_t i = 0; i < count; ++i) {
+        log_display_diagnostic(displays[i], list_name);
+      }
+    }
+
+    void log_display_environment_diagnostics() {
+      CGDirectDisplayID active_displays[kMaxDisplays];
+      CGDirectDisplayID online_displays[kMaxDisplays];
+      uint32_t active_display_count = 0;
+      uint32_t online_display_count = 0;
+
+      const auto active_error = CGGetActiveDisplayList(kMaxDisplays, active_displays, &active_display_count);
+      const auto online_error = CGGetOnlineDisplayList(kMaxDisplays, online_displays, &online_display_count);
+
+      BOOST_LOG(info) << "Main display diagnostic: id: "sv << CGMainDisplayID();
+      log_display_list_diagnostics("CGGetActiveDisplayList", active_error, active_displays, active_display_count);
+      log_display_list_diagnostics("CGGetOnlineDisplayList", online_error, online_displays, online_display_count);
+      log_nsscreen_diagnostics();
+    }
+
     bool has_required_active_display(const std::string &display_name) {
       CGDirectDisplayID displays[kMaxDisplays];
       uint32_t display_count = 0;
@@ -265,6 +385,7 @@ namespace platf {
 
     // Print all displays available with it's name and id
     BOOST_LOG(info) << "Detecting displays"sv;
+    log_display_environment_diagnostics();
 
     auto display_array = [AVVideo displayNames];
     bool matched_configured_display = display_name.empty();
@@ -286,6 +407,7 @@ namespace platf {
                          << display->display_id << "]."sv;
     }
 
+    log_display_diagnostic(display->display_id, "selected for AVFoundation capture");
     BOOST_LOG(info) << "Configuring selected display ("sv << display->display_id << ") to stream"sv;
 
     display->av_capture = [[AVVideo alloc] initWithDisplay:display->display_id frameRate:config.framerate];
