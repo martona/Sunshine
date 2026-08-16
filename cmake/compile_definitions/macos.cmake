@@ -60,6 +60,8 @@ set(PLATFORM_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/platform/macos/publish.cpp"
         "${CMAKE_SOURCE_DIR}/src/platform/macos/sc_capture.h"
         "${CMAKE_SOURCE_DIR}/src/platform/macos/sc_capture.mm"
+        "${CMAKE_SOURCE_DIR}/src/platform/macos/vt_encoder.h"
+        "${CMAKE_SOURCE_DIR}/src/platform/macos/vt_encoder.mm"
         "${CMAKE_SOURCE_DIR}/third-party/TPCircularBuffer/TPCircularBuffer.c"
         "${CMAKE_SOURCE_DIR}/third-party/TPCircularBuffer/TPCircularBuffer.h"
         ${APPLE_ENTITLEMENTS_FILE}

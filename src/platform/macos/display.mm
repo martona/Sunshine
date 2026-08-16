@@ -23,6 +23,7 @@
 #include "src/platform/macos/misc.h"
 #include "src/platform/macos/nv12_zero_device.h"
 #import "src/platform/macos/sc_capture.h"
+#include "src/platform/macos/vt_encoder.h"
 #include "src/utility.h"
 
 // Avoid conflict between AVFoundation and libavutil both defining AVMediaType
@@ -344,6 +345,16 @@ namespace platf {
     }
 
     /**
+     * @brief Create a native VideoToolbox encode device.
+     *
+     * @param pix_fmt Sunshine pixel format to convert or allocate for.
+     * @return Constructed VideoToolbox encode device object.
+     */
+    std::unique_ptr<vt_encode_device_t> make_vt_encode_device(pix_fmt_e pix_fmt) override {
+      return vt::make_encode_device(static_cast<void *>(av_capture), pix_fmt, setResolution, setPixelFormat);
+    }
+
+    /**
      * A bridge from the pure C++ code of the hwdevice_t class to the pure Objective C code.
      *
      * display --> an opaque pointer to an object of this class
@@ -477,6 +488,16 @@ namespace platf {
         BOOST_LOG(error) << "Unsupported Pixel Format."sv;
         return nullptr;
       }
+    }
+
+    /**
+     * @brief Create a native VideoToolbox encode device.
+     *
+     * @param pix_fmt Sunshine pixel format to convert or allocate for.
+     * @return Constructed VideoToolbox encode device object.
+     */
+    std::unique_ptr<vt_encode_device_t> make_vt_encode_device(pix_fmt_e pix_fmt) override {
+      return vt::make_encode_device(static_cast<void *>(sc_capture), pix_fmt, setResolution, setPixelFormat);
     }
 
     /**

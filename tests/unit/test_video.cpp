@@ -57,6 +57,7 @@ INSTANTIATE_TEST_SUITE_P(
     &video::vaapi,
 #endif
 #ifdef __APPLE__
+    &video::videotoolbox_native,
     &video::videotoolbox,
 #endif
     &video::software
