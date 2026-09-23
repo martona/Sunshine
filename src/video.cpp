@@ -1473,6 +1473,7 @@ namespace video {
       {},  // YUV444 HDR-specific options
       {},  // Fallback options
       "av1_vt"s,
+      {},  // capabilities
     },
     {
       // Common options
@@ -1483,6 +1484,7 @@ namespace video {
       {},  // YUV444 HDR-specific options
       {},  // Fallback options
       "hevc_vt"s,
+      {},  // capabilities
     },
     {
       // Common options
@@ -1493,6 +1495,7 @@ namespace video {
       {},  // YUV444 HDR-specific options
       {},  // Fallback options
       "h264_vt"s,
+      {},  // capabilities
     },
     PARALLEL_ENCODING
   };
