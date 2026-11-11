@@ -74,6 +74,15 @@ namespace platf::sckit {
     virtual bool start() = 0;
 
     /**
+     * @brief Show or hide the mouse cursor in captured frames.
+     *
+     * May be called before start() to choose the initial state, and while the stream runs.
+     *
+     * @param visible `true` to composite the cursor into frames, `false` to leave it out.
+     */
+    virtual void set_cursor_visible(bool visible) = 0;
+
+    /**
      * @brief Wait until a new frame is available or the timeout expires.
      *
      * @param timeout Maximum time to wait.
@@ -120,6 +129,8 @@ namespace platf::sckit {
    * @param pull_free_image_cb Pipeline callback providing free images.
    * @param process_frame Converts a sample buffer into the pulled image.
    * @param poll_interval Longest time to wait for a frame before reporting a timeout.
+   * @param cursor Flag polled on every iteration to show or hide the cursor in captured frames;
+   *               the cursor stays visible when null.
    * @return `capture_e::ok` when the pipeline interrupted capture; `capture_e::reinit` when the stream failed.
    */
   capture_e run_capture_loop(
@@ -128,6 +139,7 @@ namespace platf::sckit {
     const display_t::push_captured_image_cb_t &push_captured_image_cb,
     const display_t::pull_free_image_cb_t &pull_free_image_cb,
     const process_frame_fn_t &process_frame,
-    std::chrono::nanoseconds poll_interval
+    std::chrono::nanoseconds poll_interval,
+    const bool *cursor = nullptr
   );
 }  // namespace platf::sckit

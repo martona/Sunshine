@@ -52,6 +52,11 @@ API_AVAILABLE(macos(14.0))
 @property (nonatomic, assign) int frameHeight;
 
 /**
+ * @brief Whether the mouse cursor is composited into captured frames.
+ */
+@property (nonatomic, assign) BOOL showsCursor;
+
+/**
  * @brief Content filter selecting the captured display.
  */
 @property (nonatomic, strong) SCContentFilter *contentFilter;
@@ -126,6 +131,14 @@ API_AVAILABLE(macos(14.0))
  * @param frameHeight Output frame height in pixels.
  */
 - (void)setFrameWidth:(int)frameWidth frameHeight:(int)frameHeight;
+/**
+ * @brief Show or hide the mouse cursor in captured frames.
+ *
+ * Takes effect immediately on a running stream and is remembered for streams started later.
+ *
+ * @param visible `YES` to composite the cursor into frames, `NO` to leave it out.
+ */
+- (void)setCursorVisible:(BOOL)visible;
 /**
  * @brief Create, configure, and start the capture stream.
  *

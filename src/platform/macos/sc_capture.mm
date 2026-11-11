@@ -92,6 +92,7 @@ API_AVAILABLE(macos(14.0))
     self.displayID = displayID;
     self.frameRate = frameRate;
     self.pixelFormat = kCVPixelFormatType_32BGRA;
+    self.showsCursor = YES;
 
     if (mode) {
       self.frameWidth = (int) CGDisplayModeGetPixelWidth(mode);
@@ -125,6 +126,37 @@ API_AVAILABLE(macos(14.0))
 - (void)setFrameWidth:(int)frameWidth frameHeight:(int)frameHeight {
   self.frameWidth = frameWidth;
   self.frameHeight = frameHeight;
+}
+
+- (void)setCursorVisible:(BOOL)visible {
+  SCStream *stream = nil;
+  SCStreamConfiguration *config = nil;
+
+  @synchronized(self) {
+    if (self.showsCursor == visible) {
+      return;
+    }
+    self.showsCursor = visible;
+
+    if (self.stopping || !self.stream || !self.streamConfiguration) {
+      // Not running: the next captureVideo picks the new value up.
+      return;
+    }
+
+    self.streamConfiguration.showsCursor = visible;
+    stream = [self.stream retain];
+    config = [self.streamConfiguration retain];
+  }
+
+  // Update outside the lock: delivery callbacks synchronize on self.
+  [stream updateConfiguration:config
+            completionHandler:^(NSError *update_error) {
+              if (update_error) {
+                BOOST_LOG(warning) << "SCCapture failed to update cursor visibility: "sv << error_description(update_error);
+              }
+            }];
+  [stream release];
+  [config release];
 }
 
 - (SCDisplay *)findDisplayWithID:(CGDirectDisplayID)displayID {
@@ -263,7 +295,7 @@ API_AVAILABLE(macos(14.0))
     config.width = self.frameWidth;
     config.height = self.frameHeight;
     config.pixelFormat = self.pixelFormat;
-    config.showsCursor = YES;
+    config.showsCursor = self.showsCursor;
     config.captureResolution = SCCaptureResolutionBest;
     config.preservesAspectRatio = YES;
     // Slightly below the target interval: an interval of exactly 1/fps beats against

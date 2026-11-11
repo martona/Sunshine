@@ -10,6 +10,7 @@
   // standard includes
   #include <chrono>
   #include <deque>
+  #include <functional>
   #include <memory>
   #include <vector>
 
@@ -73,14 +74,23 @@ namespace {
     int start_calls = 0;  ///< Number of start() calls.
     int stop_calls = 0;  ///< Number of stop() calls.
     int waits = 0;  ///< Number of wait_frame() calls.
+    std::vector<bool> cursor_calls;  ///< Argument of every set_cursor_visible() call, in order.
+    std::function<void(int)> on_wait;  ///< Optional hook run on each wait with the wait count.
 
     bool start() override {
       ++start_calls;
       return start_result;
     }
 
+    void set_cursor_visible(bool visible) override {
+      cursor_calls.push_back(visible);
+    }
+
     void wait_frame(std::chrono::nanoseconds) override {
       ++waits;
+      if (on_wait) {
+        on_wait(waits);
+      }
     }
 
     [[nodiscard]] bool stopped() const override {
@@ -116,9 +126,10 @@ namespace {
      *
      * @param source Scripted stream.
      * @param policy Backend policy under test.
+     * @param cursor Cursor visibility flag polled by the loop, or null.
      * @return Loop status.
      */
-    platf::capture_e run(fake_frame_source_t &source, platf::sckit::backend_policy_t &policy) {
+    platf::capture_e run(fake_frame_source_t &source, platf::sckit::backend_policy_t &policy, const bool *cursor = nullptr) {
       return platf::sckit::run_capture_loop(
         source,
         policy,
@@ -134,7 +145,8 @@ namespace {
           ++processed;
           return process_ok;
         },
-        1ms
+        1ms,
+        cursor
       );
     }
   };
@@ -223,6 +235,67 @@ TEST(SCCaptureLoop, BackendPolicyPrefersSckitUntilAStreamFailsToStart) {
   EXPECT_TRUE(policy.stream_start_failed());
   EXPECT_FALSE(policy.prefer_sckit(true));
   EXPECT_FALSE(policy.prefer_sckit(false));
+}
+
+TEST(SCCaptureLoop, CursorStaysVisibleWithoutACursorFlag) {
+  using event_e = fake_frame_source_t::event_e;
+  fake_frame_source_t source;
+  source.events = {event_e::frame, event_e::frame, event_e::stop};
+  platf::sckit::backend_policy_t policy;
+  fake_pipeline_t pipeline;
+
+  EXPECT_EQ(pipeline.run(source, policy), platf::capture_e::reinit);
+  EXPECT_EQ(source.cursor_calls, (std::vector<bool> {true}));
+}
+
+TEST(SCCaptureLoop, InitialCursorFlagIsAppliedBeforeTheStreamStarts) {
+  fake_frame_source_t source;
+  source.start_result = false;
+  platf::sckit::backend_policy_t policy;
+  fake_pipeline_t pipeline;
+  bool cursor = false;
+
+  EXPECT_EQ(pipeline.run(source, policy, &cursor), platf::capture_e::reinit);
+  EXPECT_EQ(source.cursor_calls, (std::vector<bool> {false}));
+}
+
+TEST(SCCaptureLoop, CursorFlagChangesAreForwardedOncePerToggle) {
+  using event_e = fake_frame_source_t::event_e;
+  fake_frame_source_t source;
+  source.events = {event_e::frame, event_e::timeout, event_e::frame, event_e::frame, event_e::stop};
+  platf::sckit::backend_policy_t policy;
+  fake_pipeline_t pipeline;
+  bool cursor = true;
+  source.on_wait = [&cursor](int wait) {
+    if (wait == 2) {
+      cursor = false;
+    } else if (wait == 4) {
+      cursor = true;
+    }
+  };
+
+  EXPECT_EQ(pipeline.run(source, policy, &cursor), platf::capture_e::reinit);
+  EXPECT_EQ(source.cursor_calls, (std::vector<bool> {true, false, true}));
+}
+
+TEST(SCCaptureLoop, CursorVisibilityIsRememberedWhileStopped) {
+  if (@available(macOS 14.0, *)) {
+    SCCapture *capture = [[SCCapture alloc] init];
+    ASSERT_NE(capture, nil);
+
+    capture.showsCursor = YES;
+    [capture setCursorVisible:NO];
+    EXPECT_FALSE(capture.showsCursor);
+
+    // Repeating the current state is a no-op.
+    [capture setCursorVisible:NO];
+    EXPECT_FALSE(capture.showsCursor);
+
+    [capture setCursorVisible:YES];
+    EXPECT_TRUE(capture.showsCursor);
+
+    [capture release];
+  }
 }
 
 TEST(SCCaptureLoop, StopDelegateMarksStreamFailedUnlessStopping) {

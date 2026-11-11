@@ -34,8 +34,13 @@ namespace platf::sckit {
     const display_t::push_captured_image_cb_t &push_captured_image_cb,
     const display_t::pull_free_image_cb_t &pull_free_image_cb,
     const process_frame_fn_t &process_frame,
-    std::chrono::nanoseconds poll_interval
+    std::chrono::nanoseconds poll_interval,
+    const bool *cursor
   ) {
+    // Apply the cursor state before starting so the first frames already honor it.
+    bool cursor_visible = !cursor || *cursor;
+    source.set_cursor_visible(cursor_visible);
+
     if (!source.start()) {
       // The display was built for ScreenCaptureKit but the stream never came up: ask the
       // capture thread to rebuild the display, which the policy now steers to AVFoundation.
@@ -51,6 +56,12 @@ namespace platf::sckit {
       // The stream pushes frames on its own; wait for the next one, waking periodically
       // to report a timeout and to notice interrupt requests.
       source.wait_frame(poll_interval);
+
+      if (const bool wanted = !cursor || *cursor; wanted != cursor_visible) {
+        // The cursor shortcut was pressed since the last frame.
+        cursor_visible = wanted;
+        source.set_cursor_visible(cursor_visible);
+      }
 
       if (source.stopped()) {
         // The stream died underneath us (display change, permission revoked, ...);

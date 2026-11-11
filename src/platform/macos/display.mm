@@ -219,6 +219,10 @@ namespace platf {
         return true;
       }
 
+      void set_cursor_visible(bool visible) override {
+        [capture setCursorVisible:visible];
+      }
+
       void wait_frame(std::chrono::nanoseconds timeout) override {
         dispatch_semaphore_wait(frame_signal, dispatch_time(DISPATCH_TIME_NOW, timeout.count()));
       }
@@ -416,7 +420,7 @@ namespace platf {
       sc_frame_source_t source {sc_capture};
       auto &policy = sckit::backend_policy();
 
-      const auto status = sckit::run_capture_loop(source, policy, push_captured_image_cb, pull_free_image_cb, process_frame, SCKIT_FRAME_POLL_INTERVAL);
+      const auto status = sckit::run_capture_loop(source, policy, push_captured_image_cb, pull_free_image_cb, process_frame, SCKIT_FRAME_POLL_INTERVAL, cursor);
       if (status == capture_e::reinit) {
         if (policy.stream_start_failed()) {
           BOOST_LOG(warning) << "SCCapture stream could not be started; reinitializing capture on AVFoundation"sv;
