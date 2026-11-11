@@ -27,6 +27,8 @@ namespace platf::display_helpers {
     void fill_plane_black(void *base, std::size_t bytes, OSType format, std::size_t plane) {
       if (format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
         std::memset(base, plane == 0 ? 16 : 128, bytes);
+      } else if (format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
+        std::memset(base, plane == 0 ? 0 : 128, bytes);
       } else if (format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange) {
         // x420 stores each 10-bit sample in the high bits of a 16-bit word.
         const auto value = static_cast<std::uint16_t>((plane == 0 ? 64 : 512) << 6);
@@ -60,6 +62,13 @@ namespace platf::display_helpers {
     }
 
     CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+  }
+
+  OSType apply_client_color_range(OSType pixel_format, bool full_range) {
+    if (full_range && pixel_format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
+      return kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
+    }
+    return pixel_format;
   }
 
   CGRect active_desktop_bounds(CGDirectDisplayID fallback_display) {

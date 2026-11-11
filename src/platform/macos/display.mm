@@ -59,7 +59,7 @@ namespace platf {
 
     OSType videotoolbox_pixel_format(const video::config_t &config) {
       const auto colorspace {video::colorspace_from_client_config(config, false)};
-      return colorspace.bit_depth == 10 ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+      return colorspace.bit_depth == 10 ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : display_helpers::apply_client_color_range(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, colorspace.full_range);
     }
 
     /**
@@ -257,6 +257,7 @@ namespace platf {
    */
   struct av_display_t: public display_t {
     AVVideo *av_capture {};  ///< AV capture.
+    bool full_range {};  ///< Whether the client requested full-range video.
     CGDirectDisplayID display_id {};  ///< Display ID.
     std::unique_ptr<display_device::DisplayPowerGuardInterface> display_power_guard;  ///< Display power guard.
 
@@ -340,8 +341,8 @@ namespace platf {
           [capture](int width, int height) {
             [capture setFrameWidth:width frameHeight:height];
           },
-          [capture](int pixel_format) {
-            capture.pixelFormat = pixel_format;
+          [capture, full_range = full_range](int pixel_format) {
+            capture.pixelFormat = display_helpers::apply_client_color_range(pixel_format, full_range);
           }
         );
 
@@ -404,6 +405,7 @@ namespace platf {
    */
   struct sc_display_t: public display_t {
     SCCapture *sc_capture {};  ///< ScreenCaptureKit capture controller.
+    bool full_range {};  ///< Whether the client requested full-range video.
     CGDirectDisplayID display_id {};  ///< Display ID.
     std::unique_ptr<display_device::DisplayPowerGuardInterface> display_power_guard;  ///< Display power guard.
 
@@ -456,8 +458,8 @@ namespace platf {
           [capture](int width, int height) {
             [capture setFrameWidth:width frameHeight:height];
           },
-          [capture](int pixel_format) {
-            capture.pixelFormat = pixel_format;
+          [capture, full_range = full_range](int pixel_format) {
+            capture.pixelFormat = display_helpers::apply_client_color_range(pixel_format, full_range);
           }
         );
 
@@ -549,6 +551,7 @@ namespace platf {
             const auto pixel_format {videotoolbox_pixel_format(config)};
             [display->sc_capture setFrameWidth:config.width frameHeight:config.height];
             display->sc_capture.pixelFormat = pixel_format;
+            display->full_range = video::colorspace_from_client_config(config, false).full_range;
           }
 
           return display;
@@ -579,6 +582,7 @@ namespace platf {
       const auto pixel_format {videotoolbox_pixel_format(config)};
       [display->av_capture setFrameWidth:config.width frameHeight:config.height];
       display->av_capture.pixelFormat = pixel_format;
+      display->full_range = video::colorspace_from_client_config(config, false).full_range;
     }
 
     return display;

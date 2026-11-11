@@ -15,12 +15,24 @@ namespace platf::display_helpers {
   /**
    * @brief Fill a pixel buffer with black.
    *
-   * Video-range bi-planar formats get legal black luma and neutral chroma (8-bit `420v` and
-   * 10-bit `x420`); any other format is zero-filled, which is black for BGRA.
+   * Bi-planar formats get black luma and neutral chroma (8-bit `420v` and `420f`, 10-bit
+   * `x420`); any other format is zero-filled, which is black for BGRA.
    *
    * @param pixel_buffer Pixel buffer to fill.
    */
   void fill_black(CVPixelBufferRef pixel_buffer);
+
+  /**
+   * @brief Select the capture pixel format matching the client's requested color range.
+   *
+   * Only 8-bit `420v` has a full-range counterpart requested here (`420f`); every other
+   * format is returned unchanged.
+   *
+   * @param pixel_format Video-range capture pixel format.
+   * @param full_range Whether the client requested full-range video.
+   * @return The full-range equivalent for 8-bit capture, otherwise the unchanged format.
+   */
+  OSType apply_client_color_range(OSType pixel_format, bool full_range);
 
   /**
    * @brief Return the union of active CoreGraphics display bounds.

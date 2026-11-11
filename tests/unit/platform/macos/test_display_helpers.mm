@@ -143,6 +143,19 @@ TEST(DisplayHelpers, FillBlack8BitVideoRangeUsesLegalBlackAndNeutralChroma) {
   CVPixelBufferRelease(pixel_buffer);
 }
 
+TEST(DisplayHelpers, FillBlack8BitFullRangeUsesZeroLumaAndNeutralChroma) {
+  CVPixelBufferRef pixel_buffer = make_pixel_buffer(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange);
+  ASSERT_NE(pixel_buffer, nullptr);
+  platf::display_helpers::fill_black(pixel_buffer);
+
+  CVPixelBufferLockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
+  EXPECT_TRUE(plane_is<std::uint8_t>(pixel_buffer, 0, 0));
+  EXPECT_TRUE(plane_is<std::uint8_t>(pixel_buffer, 1, 128));
+  CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
+
+  CVPixelBufferRelease(pixel_buffer);
+}
+
 TEST(DisplayHelpers, FillBlack10BitVideoRangeUsesLegalBlackAndNeutralChroma) {
   CVPixelBufferRef pixel_buffer = make_pixel_buffer(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange);
   ASSERT_NE(pixel_buffer, nullptr);
@@ -179,7 +192,17 @@ TEST(DisplayHelpers, FillBlackZeroFillsPackedFormats) {
 
 TEST(DisplayHelpers, FilledBuffersConvertToRgbBlack) {
   expect_converts_to_black(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
+  expect_converts_to_black(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange);
   expect_converts_to_black(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange);
+}
+
+TEST(DisplayHelpers, ClientColorRangeSelectsFullRangeOnlyFor8BitCapture) {
+  using platf::display_helpers::apply_client_color_range;
+
+  EXPECT_EQ(apply_client_color_range(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, true), kCVPixelFormatType_420YpCbCr8BiPlanarFullRange);
+  EXPECT_EQ(apply_client_color_range(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, false), kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
+  EXPECT_EQ(apply_client_color_range(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange, true), kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange);
+  EXPECT_EQ(apply_client_color_range(kCVPixelFormatType_32BGRA, true), kCVPixelFormatType_32BGRA);
 }
 
 TEST(DisplayHelpers, ScaledDisplayKeepsPhysicalSizeAndUsesLogicalBounds) {
